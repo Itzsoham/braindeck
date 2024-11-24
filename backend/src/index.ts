@@ -1,9 +1,10 @@
 import express from "express";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
-import { ContentModel, UserModel } from "./db";
+import { ContentModel, LinkModel, UserModel } from "./db";
 import { JWT_SECRET } from "./config";
 import { userMiddleware } from "./middleware";
+import { random } from "./utils";
 
 const app = express();
 app.use(express.json());
@@ -97,8 +98,65 @@ app.delete("/api/v1/content", userMiddleware, async (req, res) => {
   });
 });
 
-app.post("/api/v1/brain/share", (req, res) => {});
+app.post("/api/v1/brain/share", userMiddleware, async (req, res) => {
+  const share = req.body.share;
+  if (share) {
+    const existingLink = await LinkModel.findOne({
+      // @ts-ignore
+      userId: req.userId,
+    });
 
-app.get("/api/v1/brain/:shareLink", (req, res) => {});
+    if (existingLink) {
+      res.status(411).json({
+        message: "Link already exists " + "/share/" + existingLink.Hash,
+      });
+    } else {
+      const hash = random(10);
+      await LinkModel.create({
+        Hash: hash,
+        // @ts-ignore
+        userId: req.userId,
+      });
+
+      res.json({
+        message: "/share/" + hash,
+      });
+    }
+  } else {
+    await LinkModel.deleteOne({
+      // @ts-ignore
+      userId: req.userId,
+    });
+
+    res.json({
+      message: "Link removed",
+    });
+  }
+});
+
+app.get("/api/v1/brain/share/:shareLink", async (req, res) => {
+  const shareLink = req.params.shareLink;
+
+  const link = await LinkModel.findOne({
+    Hash: shareLink,
+  });
+
+  if (link) {
+    const content = await ContentModel.find({
+      userId: link.userId,
+    });
+
+    const user = await UserModel.findById(link.userId);
+
+    res.json({
+      username: user?.username,
+      content,
+    });
+  } else {
+    res.status(411).json({
+      message: "Link is incorrect or expired",
+    });
+  }
+});
 
 app.listen(3000);
